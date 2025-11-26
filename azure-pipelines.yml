@@ -30,7 +30,7 @@ stages:
     jobs:
       - job: Build
         pool:
-          name: 'SanboxAgent'
+          name: 'sandboxAgent'
         steps:
           # In a real node/python/dotnet app, you would run 'npm install' or 'dotnet build' here.
           # For now, we are just archiving the source files.
