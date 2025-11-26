@@ -1,0 +1,22 @@
+# .gitignore
+
+# Terraform temporary files
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!infra/environments/*.tfvars  # Keep our environment variable files
+.terraform.lock.hcl
+
+# Node/App dependencies (if you have them locally)
+node_modules/
+dist/
+bin/
+obj/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Azure DevOps local settings
+.vscode/

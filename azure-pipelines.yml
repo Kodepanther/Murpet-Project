@@ -1,0 +1,203 @@
+# azure-pipelines.yml
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - dev
+      - staging
+
+variables:
+  # 1. Service Connection Name (From Step 2)
+  azureServiceConnection: 'murpet-sc'
+  
+  # 2. Terraform State Info (From your recent output)
+  tfStateResourceGroup: 'murpet-tfstate-rg'
+  tfStateStorageAccount: 'murpettfstate7594'
+  tfStateContainer: 'tfstate'
+  
+  # 3. Path to Terraform Directory
+  terraformWorkingDir: '$(System.DefaultWorkingDirectory)/infra'
+
+stages:
+  # ==============================================================================
+  # STAGE 1: BUILD (Compiles code and packages it for deployment)
+  # ==============================================================================
+  - stage: Build
+    displayName: 'Build and Publish'
+    jobs:
+      - job: Build
+        pool:
+          name: 'SanboxAgent'
+        steps:
+          # In a real node/python/dotnet app, you would run 'npm install' or 'dotnet build' here.
+          # For now, we are just archiving the source files.
+          - task: ArchiveFiles@2
+            displayName: 'Archive files'
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)/src'
+              includeRootFolder: false
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+              replaceExistingArchive: true
+
+          - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+            artifact: drop
+
+  # ==============================================================================
+  # STAGE 2: DEPLOY TO DEV (Triggers only on 'dev' branch)
+  # ==============================================================================
+  - stage: DeployDev
+    displayName: 'Deploy to Dev'
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'dev'))
+    jobs:
+      - deployment: DeployDev
+        environment: 'dev'
+        pool:
+          name: 'SandboxAgent'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                # 1. Install Terraform
+                - task: TerraformInstaller@0
+                  inputs:
+                    terraformVersion: 'latest'
+
+                # 2. Terraform Init (Injecting your Storage Account details here!)
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Init'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'init'
+                    workingDirectory: '$(terraformWorkingDir)'
+                    backendServiceArm: '$(azureServiceConnection)'
+                    backendAzureRmResourceGroupName: '$(tfStateResourceGroup)'
+                    backendAzureRmStorageAccountName: '$(tfStateStorageAccount)'
+                    backendAzureRmContainerName: '$(tfStateContainer)'
+                    backendAzureRmKey: 'dev.terraform.tfstate' # Unique key for Dev
+
+                # 3. Terraform Apply
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(terraformWorkingDir)'
+                    commandOptions: '-var-file=environments/dev.tfvars -auto-approve'
+                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+
+                # 4. Deploy Code to App Service
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Code'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    appType: 'webAppLinux'
+                    appName: 'murpet-web-dev' # Must match name in main.tf
+                    package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+
+  # ==============================================================================
+  # STAGE 3: DEPLOY TO STAGING (Triggers only on 'staging' branch)
+  # ==============================================================================
+  - stage: DeployStaging
+    displayName: 'Deploy to Staging'
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'staging'))
+    jobs:
+      - deployment: DeployStaging
+        environment: 'staging'
+        pool:
+          name: 'SandboxAgent'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: TerraformInstaller@0
+                  inputs:
+                    terraformVersion: 'latest'
+                
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Init'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'init'
+                    workingDirectory: '$(terraformWorkingDir)'
+                    backendServiceArm: '$(azureServiceConnection)'
+                    backendAzureRmResourceGroupName: '$(tfStateResourceGroup)'
+                    backendAzureRmStorageAccountName: '$(tfStateStorageAccount)'
+                    backendAzureRmContainerName: '$(tfStateContainer)'
+                    backendAzureRmKey: 'staging.terraform.tfstate' # Unique key for Staging
+
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(terraformWorkingDir)'
+                    commandOptions: '-var-file=environments/staging.tfvars -auto-approve'
+                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Code'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    appType: 'webAppLinux'
+                    appName: 'murpet-web-staging'
+                    package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+
+  # ==============================================================================
+  # STAGE 4: DEPLOY TO PROD (Triggers only on 'main' branch)
+  # ==============================================================================
+  - stage: DeployProd
+    displayName: 'Deploy to Production'
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
+    jobs:
+      - deployment: DeployProd
+        environment: 'prod'
+        pool:
+          name: 'SandboxAgent'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: TerraformInstaller@0
+                  inputs:
+                    terraformVersion: 'latest'
+
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Init'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'init'
+                    workingDirectory: '$(terraformWorkingDir)'
+                    backendServiceArm: '$(azureServiceConnection)'
+                    backendAzureRmResourceGroupName: '$(tfStateResourceGroup)'
+                    backendAzureRmStorageAccountName: '$(tfStateStorageAccount)'
+                    backendAzureRmContainerName: '$(tfStateContainer)'
+                    backendAzureRmKey: 'prod.terraform.tfstate' # Unique key for Prod
+
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(terraformWorkingDir)'
+                    commandOptions: '-var-file=environments/prod.tfvars -auto-approve'
+                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+
+                # 5. Deploy Code to the SLOT (Zero Downtime)
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Code to Slot'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    appType: 'webAppLinux'
+                    appName: 'murpet-web-prod'
+                    deployToSlotOrASE: true
+                    resourceGroupName: 'murpet-prod-rg'
+                    slotName: 'staging-slot' # Matches name in main.tf
+                    package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
