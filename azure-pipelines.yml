@@ -155,7 +155,7 @@ stages:
   # STAGE 4: DEPLOY TO PROD (Triggers only on 'main' branch)
   # ==============================================================================
   - stage: DeployProd
-    displayName: 'Deploy to Production'
+    displayName: 'Deploy to Production (Slot First)'
     dependsOn: Build
     condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
     jobs:

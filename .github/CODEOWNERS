@@ -1,0 +1,8 @@
+# .github/CODEOWNERS
+
+* @Kodepanther
+
+# Infrastructure Lock:
+# Only myself (Panshak Koproda) can approve changes to the infra folder.
+# Even if someone else has permission to edit src, they cannot merge infra changes without me.
+/infra/ @Kodepanther
