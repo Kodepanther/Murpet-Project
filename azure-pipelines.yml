@@ -51,6 +51,7 @@ stages:
   # ==============================================================================
   - stage: DeployDev
     displayName: 'Deploy to Dev'
+    dependsOn: Build
     condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'dev'))
     jobs:
       - deployment: DeployDev
@@ -105,6 +106,7 @@ stages:
   # ==============================================================================
   - stage: DeployStaging
     displayName: 'Deploy to Staging'
+    dependsOn: Build
     condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'staging'))
     jobs:
       - deployment: DeployStaging
@@ -154,6 +156,7 @@ stages:
   # ==============================================================================
   - stage: DeployProd
     displayName: 'Deploy to Production'
+    dependsOn: Build
     condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
     jobs:
       - deployment: DeployProd
