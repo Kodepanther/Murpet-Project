@@ -32,8 +32,15 @@ stages:
         pool:
           name: 'sandboxAgent'
         steps:
-          # In a real node/python/dotnet app, you would run 'npm install' or 'dotnet build' here.
-          # For now, we are just archiving the source files.
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '18.x'
+            displayName: 'Install Node.js'
+          - script: |
+              cd src
+              npm install
+            displayName: 'npm install dependencies'
+            
           - task: ArchiveFiles@2
             displayName: 'Archive files'
             inputs:
