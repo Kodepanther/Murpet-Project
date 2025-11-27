@@ -5,7 +5,7 @@ resource "azurerm_resource_group" "rg" {
   location = var.location
 }
 
-# 1. NEW: Create a Log Analytics Workspace (The Database for Logs)
+# 1. Log Analytics Workspace (The Database for Logs)
 resource "azurerm_log_analytics_workspace" "logs" {
   name                = "${var.project_name}-logs-${var.environment}"
   location            = azurerm_resource_group.rg.location
@@ -14,7 +14,7 @@ resource "azurerm_log_analytics_workspace" "logs" {
   retention_in_days   = 30
 }
 
-# 2. NEW: Create Application Insights (The Monitor)
+# 2. Application Insights (The Monitor)
 resource "azurerm_application_insights" "appinsights" {
   name                = "${var.project_name}-insights-${var.environment}"
   location            = azurerm_resource_group.rg.location
@@ -23,6 +23,7 @@ resource "azurerm_application_insights" "appinsights" {
   application_type    = "Node.JS"
 }
 
+# 3. App Service Plan
 resource "azurerm_service_plan" "plan" {
   name                = "${var.project_name}-${var.environment}-plan"
   resource_group_name = azurerm_resource_group.rg.name
@@ -31,6 +32,7 @@ resource "azurerm_service_plan" "plan" {
   sku_name            = "S1"
 }
 
+# 4. Web App
 resource "azurerm_linux_web_app" "app" {
   name                = "${var.project_name}-web-${var.environment}"
   resource_group_name = azurerm_resource_group.rg.name
@@ -44,82 +46,14 @@ resource "azurerm_linux_web_app" "app" {
     }
   }
 
-  # 3. NEW: Link the App to App Insights
+  # Link the App to App Insights
   app_settings = {
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
-    "ApplicationInsightsAgent_EXTENSION_VERSION" = "~3" # Enables the agent automatically
-  }
-}
-
-resource "azurerm_linux_web_app_slot" "deployment_slot" {
-  count          = var.environment == "prod" ? 1 : 0
-  name           = "staging-slot"
-  app_service_id = azurerm_linux_web_app.app.id
-
-  site_config {
-    application_stack {
-      node_version = "18-lts"
-    }
-  }
-
-  # 4. NEW: Link the Slot to App Insights too
-  app_settings = {
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"      = azurerm_application_insights.appinsights.connection_string
     "ApplicationInsightsAgent_EXTENSION_VERSION" = "~3"
   }
-}# infra/main.tf
-
-resource "azurerm_resource_group" "rg" {
-  name     = "${var.project_name}-${var.environment}-rg"
-  location = var.location
 }
 
-# 1. NEW: Create a Log Analytics Workspace (The Database for Logs)
-resource "azurerm_log_analytics_workspace" "logs" {
-  name                = "${var.project_name}-logs-${var.environment}"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
-}
-
-# 2. NEW: Create Application Insights (The Monitor)
-resource "azurerm_application_insights" "appinsights" {
-  name                = "${var.project_name}-insights-${var.environment}"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  workspace_id        = azurerm_log_analytics_workspace.logs.id
-  application_type    = "Node.JS"
-}
-
-resource "azurerm_service_plan" "plan" {
-  name                = "${var.project_name}-${var.environment}-plan"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  os_type             = "Linux"
-  sku_name            = "S1"
-}
-
-resource "azurerm_linux_web_app" "app" {
-  name                = "${var.project_name}-web-${var.environment}"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_service_plan.plan.location
-  service_plan_id     = azurerm_service_plan.plan.id
-
-  site_config {
-    always_on = true
-    application_stack {
-      node_version = "18-lts"
-    }
-  }
-
-  # 3. NEW: Link the App to App Insights
-  app_settings = {
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
-    "ApplicationInsightsAgent_EXTENSION_VERSION" = "~3" # Enables the agent automatically
-  }
-}
-
+# 5. Deployment Slot (Prod only)
 resource "azurerm_linux_web_app_slot" "deployment_slot" {
   count          = var.environment == "prod" ? 1 : 0
   name           = "staging-slot"
@@ -131,9 +65,9 @@ resource "azurerm_linux_web_app_slot" "deployment_slot" {
     }
   }
 
-  # 4. NEW: Link the Slot to App Insights too
+  # Link the Slot to App Insights too
   app_settings = {
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"      = azurerm_application_insights.appinsights.connection_string
     "ApplicationInsightsAgent_EXTENSION_VERSION" = "~3"
   }
 }
