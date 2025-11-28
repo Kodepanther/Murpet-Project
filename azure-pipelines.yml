@@ -36,10 +36,21 @@ stages:
             inputs:
               versionSpec: '18.x'
             displayName: 'Install Node.js'
+
+          - task: Cache@2
+            displayName: 'Cache npm dependencies'
+            inputs:
+              key: 'npm | "$(Agent.OS)" | src/package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(System.DefaultWorkingDirectory)/src/node_modules
+              cacheHitVar: CACHE_RESTORED
+
           - script: |
               cd src
               npm install
             displayName: 'npm install dependencies'
+            condition: ne(variables.CACHE_RESTORED, 'true')
             
           - task: ArchiveFiles@2
             displayName: 'Archive files'
