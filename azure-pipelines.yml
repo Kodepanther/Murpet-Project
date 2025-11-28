@@ -65,58 +65,48 @@ stages:
             artifact: drop
 
   # ==============================================================================
-  # STAGE 2: DEPLOY TO DEV (Triggers only on 'dev' branch)
+  # STAGE 1: BUILD (Compiles code and packages it for deployment)
   # ==============================================================================
-  - stage: DeployDev
-    displayName: 'Deploy to Dev'
-    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'dev'))
+  - stage: Build
+    displayName: 'Build and Publish'
     jobs:
-      - deployment: DeployDev
-        environment: 'dev'
+      - job: Build
         pool:
-          name: 'SandboxAgent'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
-                
-                # 1. Install Terraform
-                - task: TerraformInstaller@0
-                  inputs:
-                    terraformVersion: 'latest'
+          name: 'sandboxAgent' # Keeping your custom agent
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '18.x'
+            displayName: 'Install Node.js'
 
-                # 2. Terraform Init (Injecting your Storage Account details here!)
-                - task: TerraformTaskV4@4
-                  displayName: 'Terraform Init'
-                  inputs:
-                    provider: 'azurerm'
-                    command: 'init'
-                    workingDirectory: '$(terraformWorkingDir)'
-                    backendServiceArm: '$(azureServiceConnection)'
-                    backendAzureRmResourceGroupName: '$(tfStateResourceGroup)'
-                    backendAzureRmStorageAccountName: '$(tfStateStorageAccount)'
-                    backendAzureRmContainerName: '$(tfStateContainer)'
-                    backendAzureRmKey: 'dev.terraform.tfstate' # Unique key for Dev
+          # FIXED: Changed package-lock.json to package.json
+          - task: Cache@2
+            displayName: 'Cache npm dependencies'
+            inputs:
+              key: 'npm | "$(Agent.OS)" | src/package.json' 
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(System.DefaultWorkingDirectory)/src/node_modules
+              cacheHitVar: CACHE_RESTORED
 
-                # 3. Terraform Apply
-                - task: TerraformTaskV4@4
-                  displayName: 'Terraform Apply'
-                  inputs:
-                    provider: 'azurerm'
-                    command: 'apply'
-                    workingDirectory: '$(terraformWorkingDir)'
-                    commandOptions: '-var-file=environments/dev.tfvars -auto-approve'
-                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+          - script: |
+              cd src
+              npm install
+              npm prune --production
+            displayName: 'npm install dependencies'
+            condition: ne(variables.CACHE_RESTORED, 'true')
 
-                # 4. Deploy Code to App Service
-                - task: AzureWebApp@1
-                  displayName: 'Deploy Code'
-                  inputs:
-                    azureSubscription: '$(azureServiceConnection)'
-                    appType: 'webAppLinux'
-                    appName: 'murpet-web-dev' # Must match name in main.tf
-                    package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+          - task: ArchiveFiles@2
+            displayName: 'Archive files'
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)/src'
+              includeRootFolder: false
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+              replaceExistingArchive: true
+
+          - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+            artifact: drop
 
   # ==============================================================================
   # STAGE 3: DEPLOY TO STAGING (Triggers only on 'staging' branch)
